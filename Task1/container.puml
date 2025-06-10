@@ -1,0 +1,97 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_TOP_DOWN()
+
+Person(analitic, "Аналитик")
+Person(manager, "Менеджер")
+Person(personal, "Медицинский персонал")
+
+Person_Ext(client, "Клиент")
+
+Container_Ext(ai_system, "AI-система", "Software System", "AI система")
+Container_Ext(fintech, "Финтех сервисы", "Software System", "Финтех сервисы")
+
+System_Boundary(system_company, "Система компании"){
+    System_Boundary(system_data_lakehouse, "Data LakeHouse"){
+        System(system_dremio, "Сервис работы с данными", "Dremio Apache Iceberg")
+        System(system_nessie, "Сервис каталога данных", "Nessie Catalogs")
+        System(system_minIO, "Сервис хранилища данных", "MinIO S3")
+
+        Rel(system_nessie, system_minIO, "")
+        Rel(system_dremio, system_nessie, "Работа с данными", "HTTPS")
+        Rel(system_dremio, system_minIO, "Работа с данными", "HTTPS")
+    }
+
+    System_Boundary(system_gateway, "Api Gateway"){
+        System(system_kong, "Api Gateway, балансировщик", "Kong")
+        System(system_keycloak, "Авторизация \ аутентификация пользователей", "Keycloak")
+
+        Rel(system_kong, system_keycloak, "Авторизация \ аутентификация", "HTTPS \ REST" )
+     }
+
+    System_Boundary(system_personal, "Система для работы персонала компании"){
+        Container(backend_personal, "Backend для портала персонала компании", "Java")
+        ContainerDb(db_personal, "БД для структурированных данных", PostgreSQL" )
+        System(s3_personal, "S3 хранилище", "MinIO S3")
+
+        Rel(backend_personal, s3_personal, "Работа с данными", "HTTPS")
+        Rel(backend_personal, db_personal, "Работа с данными", "TCP \ SQL" )
+        Rel(system_kong, backend_personal, "")
+
+    }
+
+    System_Boundary(system_client, "Система для работы клиентов компании"){
+        Container(backend_client, "Backend для портала клиентов компании", "Java")
+        ContainerDb(db_client, "БД для персональных данных", "PostgreSQL" )
+
+        Rel(backend_client, db_client, "Работа с данными", "TCP \ SQL" )
+        Rel(system_kong, backend_client, "Работа с данными", "HTTPS \ REST")
+
+    }
+
+    System_Boundary(system_apache_airflow, "Apache Airflow"){
+        System(apache_airflow, "Пакетная обработка данных", "Apache Airflow")
+        ContainerDb(airflow_db, "Метаданные для Apache Airflow", "PostgreSql")
+
+        Rel(apache_airflow, airflow_db, "Работа с данными", "TCP \ SQL")
+        Rel(apache_airflow, db_personal, "Чтение данных", "JDBC")
+        Rel(apache_airflow, s3_personal, "Чтение данных", "")
+        Rel(apache_airflow, db_client, "Чтение данных", "JDBC")
+    }
+
+    System_Boundary(system_data_hub, "DataHub"){
+        Container(datahub, "DataHub", "Каталог данных DataHub", "DataHub")
+        ContainerDb(datahub_db, "БД DataHub", "PotreSQL")
+        ContainerDb(datagub_index, "Index DB DataHub", "ElasticSearch")
+        SystemQueue(datagub_queue, "Kafka", "Журнал метаданных")
+
+        Rel(datahub, datahub_db, "Работа с данными", "TCP \ SQL")
+        Rel(datahub, datagub_index, "Работа с данными", "TCP ")
+        Rel(datahub, datagub_queue, "Работа с данными", "Kafka")
+    }
+
+    Rel_U(datahub, system_dremio, "Отправка данных", "HTTPS")
+    Rel(apache_airflow, system_dremio, "Работа с данными", "gRpc")
+
+    Container(web_personal, "Frontend для персонала", "React", "Портал для персонала")
+    Rel(personal, web_personal, "Работа с порталом", "HTTPS \ UI")
+    Rel(web_personal,  system_kong, "Данные", "HTTPS \ REST")
+
+    Container(web_manager, "Frontend для менеджера", "React", "Портал для менеджера")
+    Rel(manager, web_manager, "Работа с порталом", "HTTPS \ UI")
+    Rel(web_manager,  system_kong, "Данные", "HTTPS \ REST")
+
+    System(bi_system, "BI система", "Power Bi")
+
+'    Rel(bi_system, system_keycloak, "Авторизация \ аутентификация", "HTTPS \ REST" )
+    Rel_L(analitic, bi_system, "Работа с BI", "HTTPS \ UI")
+    Rel(bi_system, system_dremio, "Чтение данных", "gRpc")
+}
+
+Rel(system_kong, datahub, "Работа с данными", "HTTPS \ REST")
+Rel_U(ai_system, system_kong, "Работа с данными", "HTTPS \ REST")
+Rel_D(fintech, system_kong, "Работа с данными", "HTTPS \ REST" )
+
+Rel(client, system_kong, "Работа с порталом клиента", "HTTPS \ UI")
+@enduml
